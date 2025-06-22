@@ -33,12 +33,17 @@ exports.addUser = async (req, res) => {
     password,
     profile = 'default',
     'remote-address': remoteAddress,
-    maxLimit = '1M/1M',
+    'local-address': LocalAddress,
+    maxLimit = '2M/2M',
     expiredAt
   } = req.body;
 
   if (!remoteAddress) {
     return res.status(400).json({ error: 'remote-address (IP) wajib diisi' });
+  }
+
+  if (!LocalAddress) {
+    return res.status(400).json({ error: 'local-address (IP) wajib diisi' });
   }
 
   try {
@@ -75,6 +80,7 @@ exports.addUser = async (req, res) => {
       `=password=${password}`,
       `=profile=${profile}`,
       `=remote-address=${remoteAddress}`,
+      `=local-address=${LocalAddress}`,
       `=comment=${comment}`,
       `=service=pppoe`,
     ]);
@@ -127,7 +133,7 @@ exports.updateUser = async (req, res) => {
   const { name } = req.params;
   const updateFields = req.body;
 
-  try {
+  try { 
     await mikrotik.connect();
     const users = await mikrotik.write('/ppp/secret/print');
     const user = users.find(u => u.name === name);
@@ -146,6 +152,7 @@ exports.updateUser = async (req, res) => {
     await mikrotik.close();
     res.json({ message: 'User updated', result });
   } catch (err) {
+    console.error(err);
     res.status(500).json({ error: err.message });
   }
 };
