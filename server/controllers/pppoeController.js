@@ -32,72 +32,77 @@ exports.addUser = async (req, res) => {
     name,
     password,
     profile = 'default',
-    'remote-address': remoteAddress,
-    'local-address': LocalAddress,
     maxLimit = '2M/2M',
     expiredAt
   } = req.body;
 
-  if (!remoteAddress) {
-    return res.status(400).json({ error: 'remote-address (IP) wajib diisi' });
-  }
-
-  if (!LocalAddress) {
-    return res.status(400).json({ error: 'local-address (IP) wajib diisi' });
-  }
+  const ipBase = '192.168.56';
+  const ipStart = 10;
+  const ipEnd = 254;
 
   try {
     await mikrotik.connect();
 
-    // Cek user duplikat
     const existingUsers = await mikrotik.write('/ppp/secret/print');
+    const existingQueues = await mikrotik.write('/queue/simple/print');
+
+    // Cek user duplikat
     const duplicateUser = existingUsers.find(u => u.name === name);
     if (duplicateUser) {
       await mikrotik.close();
       return res.status(400).json({ error: 'User PPPoE sudah ada' });
     }
 
-    // Cek IP address sudah digunakan
-    const ipUsed = existingUsers.find(u => u['remote-address'] === remoteAddress);
-    if (ipUsed) {
-      await mikrotik.close();
-      return res.status(400).json({ error: 'IP address sudah digunakan oleh user lain' });
+    // Ambil semua IP yang sudah digunakan oleh user atau queue
+    const usedIPs = new Set([
+      ...existingUsers.map(u => u['remote-address']),
+      ...existingQueues.map(q => q.target && q.target.split('/')[0])
+    ]);
+
+    // Cari IP yang belum dipakai
+    let availableIP = null;
+    for (let i = ipStart; i <= ipEnd; i++) {
+      const candidate = `${ipBase}.${i}`;
+      if (!usedIPs.has(candidate)) {
+        availableIP = candidate;
+        break;
+      }
     }
 
-    // Cek queue duplikat
-    const existingQueues = await mikrotik.write('/queue/simple/print');
-    const duplicateQueue = existingQueues.find(q => q.name === name || q.target?.includes(remoteAddress));
-    if (duplicateQueue) {
+    if (!availableIP) {
       await mikrotik.close();
-      return res.status(400).json({ error: 'Queue dengan nama atau IP tersebut sudah ada' });
+      return res.status(400).json({ error: 'Tidak ada IP tersedia' });
     }
 
     const comment = expiredAt ? `expired:${expiredAt}` : '';
+    const localAddress = `${ipBase}.1`;
 
     // Tambah user
     await mikrotik.write('/ppp/secret/add', [
       `=name=${name}`,
       `=password=${password}`,
       `=profile=${profile}`,
-      `=remote-address=${remoteAddress}`,
-      `=local-address=${LocalAddress}`,
+      `=remote-address=${availableIP}`,
+      `=local-address=${localAddress}`,
       `=comment=${comment}`,
       `=service=pppoe`,
     ]);
 
-    // Tambah queue otomatis
+    // Tambah queue
     await mikrotik.write('/queue/simple/add', [
       `=name=${name}`,
-      `=target=${remoteAddress}`,
+      `=target=${availableIP}`,
       `=max-limit=${maxLimit}`
     ]);
 
     await mikrotik.close();
-    res.status(201).json({ message: 'User dan Queue berhasil ditambahkan' });
+    res.status(201).json({ message: 'User dan Queue berhasil ditambahkan', ip: availableIP });
   } catch (err) {
+    await mikrotik.close();
     res.status(500).json({ error: err.message });
   }
 };
+
 
 // Endpoint untuk memeriksa dan menonaktifkan user yang expired
 exports.checkAndDisableExpiredUsers = async (req, res) => {

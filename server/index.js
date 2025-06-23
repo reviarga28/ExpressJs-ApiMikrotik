@@ -5,6 +5,7 @@ const { checkAndDisableExpiredUsers } = require('./controllers/pppoeController.j
 const pppoeRoutes = require('./routes/pppoeRoutes');
 const queueRoutes = require('./routes/queueRoutes');
 const logRoutes = require('./routes/logRoutes.js');
+const InterfaceRoutes = require('./routes/interfaceRoutes.js');
 
 const app = express();
 app.use(cors());
@@ -21,6 +22,7 @@ cron.schedule('0 * * * *', () => {
 app.use('/api/ppoe', pppoeRoutes);
 app.use('/api/queue', queueRoutes);
 app.use('/api/logs', logRoutes);
+app.use('/api/interface', InterfaceRoutes);
 
 app.listen(3000, () => {
   console.log('Server running at http://localhost:3000');
